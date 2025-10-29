@@ -66,7 +66,8 @@
                     id: idx,
                     name: file.name,
                     url: URL.createObjectURL(file),
-                    file: file
+                    file: file,
+                    type: file.type
                 }));
                 setVideos(videoFiles);
                 setCurrentIndex(0);
@@ -77,13 +78,33 @@
             const currentVideo = videos[currentIndex];
 
             useEffect(() => {
-                if (videoRef.current) {
-                    videoRef.current.load();
+                if (videoRef.current && currentVideo) {
+                    const video = videoRef.current;
+                    video.src = currentVideo.url;
+                    video.load();
+                    
+                    const handleCanPlay = () => {
+                        console.log('Video can play:', currentVideo.name);
+                    };
+                    
+                    const handleError = (e) => {
+                        console.error('Video error:', e);
+                        alert(`Error loading video: ${currentVideo.name}. Please ensure it's a valid video file.`);
+                    };
+                    
+                    video.addEventListener('canplay', handleCanPlay);
+                    video.addEventListener('error', handleError);
+                    
                     setIsPlaying(false);
                     setCurrentTime(0);
                     setMarkers([]);
+                    
+                    return () => {
+                        video.removeEventListener('canplay', handleCanPlay);
+                        video.removeEventListener('error', handleError);
+                    };
                 }
-            }, [currentIndex]);
+            }, [currentIndex, currentVideo]);
 
             const togglePlay = () => {
                 if (videoRef.current) {
