@@ -3,25 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Data Analysis Dashboard</title>
+    <title>Video Analysis Dashboard</title>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.10.3/Recharts.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
-        const { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = Recharts;
+        const { useState, useEffect, useRef } = React;
 
-        // Lucide Icons as SVG components
         const Upload = () => (
             <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+        );
+
+        const Play = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+        );
+
+        const Pause = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+        );
+
+        const Check = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
         );
 
@@ -31,364 +47,320 @@
             </svg>
         );
 
-        const Search = ({ className }) => (
-            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-        );
+        function VideoAnalysisDashboard() {
+            const [videos, setVideos] = useState([]);
+            const [currentIndex, setCurrentIndex] = useState(0);
+            const [isPlaying, setIsPlaying] = useState(false);
+            const [currentTime, setCurrentTime] = useState(0);
+            const [duration, setDuration] = useState(0);
+            const [markers, setMarkers] = useState([]);
+            const [markingMode, setMarkingMode] = useState(null);
+            const [results, setResults] = useState([]);
+            
+            const videoRef = useRef(null);
+            const timelineRef = useRef(null);
 
-        function DataAnalysisDashboard() {
-            const [data, setData] = useState([]);
-            const [columns, setColumns] = useState([]);
-            const [selectedColumns, setSelectedColumns] = useState([]);
-            const [chartType, setChartType] = useState('bar');
-            const [filters, setFilters] = useState({});
-            const [searchTerm, setSearchTerm] = useState('');
-            const [aggregation, setAggregation] = useState('count');
-            const [groupBy, setGroupBy] = useState('');
-            const [stats, setStats] = useState(null);
+            const handleVideoUpload = (event) => {
+                const files = Array.from(event.target.files);
+                const videoFiles = files.map((file, idx) => ({
+                    id: idx,
+                    name: file.name,
+                    url: URL.createObjectURL(file),
+                    file: file
+                }));
+                setVideos(videoFiles);
+                setCurrentIndex(0);
+                setMarkers([]);
+                setResults([]);
+            };
 
-            const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+            const currentVideo = videos[currentIndex];
 
-            const handleFileUpload = (event) => {
-                const file = event.target.files[0];
-                if (!file) return;
+            useEffect(() => {
+                if (videoRef.current) {
+                    videoRef.current.load();
+                    setIsPlaying(false);
+                    setCurrentTime(0);
+                    setMarkers([]);
+                }
+            }, [currentIndex]);
 
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const text = e.target.result;
-                    
-                    if (file.name.endsWith('.json')) {
-                        try {
-                            const jsonData = JSON.parse(text);
-                            const dataArray = Array.isArray(jsonData) ? jsonData : [jsonData];
-                            processData(dataArray);
-                        } catch (error) {
-                            alert('Error parsing JSON file');
-                        }
+            const togglePlay = () => {
+                if (videoRef.current) {
+                    if (isPlaying) {
+                        videoRef.current.pause();
                     } else {
-                        Papa.parse(text, {
-                            header: true,
-                            dynamicTyping: true,
-                            skipEmptyLines: true,
-                            complete: (results) => {
-                                processData(results.data);
-                            },
-                            error: () => {
-                                alert('Error parsing CSV file');
-                            }
-                        });
+                        videoRef.current.play();
                     }
+                    setIsPlaying(!isPlaying);
+                }
+            };
+
+            const handleTimeUpdate = () => {
+                if (videoRef.current) {
+                    setCurrentTime(videoRef.current.currentTime);
+                }
+            };
+
+            const handleLoadedMetadata = () => {
+                if (videoRef.current) {
+                    setDuration(videoRef.current.duration);
+                }
+            };
+
+            const handleTimelineClick = (e) => {
+                if (!timelineRef.current || !videoRef.current) return;
+                
+                const rect = timelineRef.current.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const percentage = x / rect.width;
+                const time = percentage * duration;
+                
+                videoRef.current.currentTime = time;
+                setCurrentTime(time);
+            };
+
+            const addMarker = (type) => {
+                const newMarker = {
+                    time: currentTime,
+                    type: type,
+                    label: formatTime(currentTime)
                 };
-                reader.readAsText(file);
+                setMarkers([...markers, newMarker].sort((a, b) => a.time - b.time));
             };
 
-            const processData = (rawData) => {
-                if (rawData.length === 0) return;
+            const removeMarker = (index) => {
+                setMarkers(markers.filter((_, i) => i !== index));
+            };
+
+            const formatTime = (seconds) => {
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.floor(seconds % 60);
+                return `${mins}:${secs.toString().padStart(2, '0')}`;
+            };
+
+            const handleNext = () => {
+                const videoResult = {
+                    videoName: currentVideo.name,
+                    markers: markers,
+                    goodSegments: markers.filter(m => m.type === 'good').length,
+                    badSegments: markers.filter(m => m.type === 'bad').length,
+                    totalMarkers: markers.length,
+                    reviewedAt: new Date().toISOString()
+                };
                 
-                const cols = Object.keys(rawData[0]);
-                setColumns(cols);
-                setSelectedColumns(cols.slice(0, 2));
-                setGroupBy(cols[0]);
-                setData(rawData);
-                calculateStats(rawData, cols);
+                setResults([...results, videoResult]);
+
+                if (currentIndex < videos.length - 1) {
+                    setCurrentIndex(currentIndex + 1);
+                } else {
+                    alert('All videos reviewed! Check the results section.');
+                }
             };
 
-            const calculateStats = (rawData, cols) => {
-                const numericCols = cols.filter(col => 
-                    rawData.some(row => typeof row[col] === 'number')
-                );
-
-                const statsData = {};
-                numericCols.forEach(col => {
-                    const values = rawData.map(row => row[col]).filter(v => typeof v === 'number');
-                    if (values.length > 0) {
-                        statsData[col] = {
-                            count: values.length,
-                            sum: values.reduce((a, b) => a + b, 0),
-                            avg: values.reduce((a, b) => a + b, 0) / values.length,
-                            min: Math.min(...values),
-                            max: Math.max(...values)
-                        };
-                    }
-                });
-
-                setStats(statsData);
-            };
-
-            const getFilteredData = () => {
-                let filtered = data.filter(row => {
-                    const matchesSearch = searchTerm === '' || 
-                        Object.values(row).some(val => 
-                            String(val).toLowerCase().includes(searchTerm.toLowerCase())
-                        );
-                    
-                    const matchesFilters = Object.entries(filters).every(([col, filterVal]) => {
-                        if (!filterVal) return true;
-                        return String(row[col]).toLowerCase().includes(filterVal.toLowerCase());
-                    });
-
-                    return matchesSearch && matchesFilters;
-                });
-
-                return filtered;
-            };
-
-            const getChartData = () => {
-                const filtered = getFilteredData();
-                if (!groupBy || filtered.length === 0) return [];
-
-                const grouped = {};
+            const downloadResults = () => {
+                const csv = Papa.unparse(results.map(r => ({
+                    'Video Name': r.videoName,
+                    'Good Segments': r.goodSegments,
+                    'Bad Segments': r.badSegments,
+                    'Total Markers': r.totalMarkers,
+                    'Reviewed At': r.reviewedAt,
+                    'Markers Detail': JSON.stringify(r.markers)
+                })));
                 
-                filtered.forEach(row => {
-                    const key = row[groupBy] || 'Unknown';
-                    if (!grouped[key]) {
-                        grouped[key] = { name: String(key), count: 0, values: [] };
-                    }
-                    grouped[key].count++;
-                    
-                    selectedColumns.forEach(col => {
-                        if (col !== groupBy && typeof row[col] === 'number') {
-                            grouped[key].values.push(row[col]);
-                        }
-                    });
-                });
-
-                return Object.values(grouped).map(item => {
-                    const result = { name: item.name, count: item.count };
-                    
-                    if (item.values.length > 0) {
-                        switch(aggregation) {
-                            case 'sum':
-                                result.value = item.values.reduce((a, b) => a + b, 0);
-                                break;
-                            case 'avg':
-                                result.value = item.values.reduce((a, b) => a + b, 0) / item.values.length;
-                                break;
-                            case 'min':
-                                result.value = Math.min(...item.values);
-                                break;
-                            case 'max':
-                                result.value = Math.max(...item.values);
-                                break;
-                            default:
-                                result.value = item.count;
-                        }
-                    } else {
-                        result.value = item.count;
-                    }
-                    
-                    return result;
-                }).slice(0, 20);
-            };
-
-            const downloadFilteredData = () => {
-                const filtered = getFilteredData();
-                const csv = Papa.unparse(filtered);
                 const blob = new Blob([csv], { type: 'text/csv' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = 'filtered_data.csv';
+                a.download = 'video_analysis_results.csv';
                 a.click();
             };
 
-            const chartData = getChartData();
-            const filteredData = getFilteredData();
-
             return (
-                <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
+                <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
                     <div className="max-w-7xl mx-auto p-6">
                         <div className="mb-8">
-                            <h1 className="text-4xl font-bold text-white mb-2">Data Analysis Dashboard</h1>
-                            <p className="text-blue-200">Upload and analyze your Build AI data</p>
+                            <h1 className="text-4xl font-bold text-white mb-2">Video Analysis Dashboard</h1>
+                            <p className="text-purple-200">Review footage and mark good/bad segments</p>
                         </div>
 
-                        {data.length === 0 ? (
+                        {videos.length === 0 ? (
                             <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-12 border border-white/20">
                                 <div className="text-center">
-                                    <div className="text-blue-300 mx-auto mb-4">
+                                    <div className="text-purple-300 mx-auto mb-4">
                                         <Upload />
                                     </div>
-                                    <h2 className="text-2xl font-semibold text-white mb-2">Upload Your Data</h2>
-                                    <p className="text-blue-200 mb-6">Support for CSV and JSON files</p>
-                                    <label className="inline-block bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 rounded-lg cursor-pointer transition-colors">
+                                    <h2 className="text-2xl font-semibold text-white mb-2">Upload Video Files</h2>
+                                    <p className="text-purple-200 mb-6">Select multiple videos to analyze</p>
+                                    <label className="inline-block bg-purple-500 hover:bg-purple-600 text-white px-8 py-3 rounded-lg cursor-pointer transition-colors">
                                         <input
                                             type="file"
-                                            accept=".csv,.json"
-                                            onChange={handleFileUpload}
+                                            accept="video/*"
+                                            multiple
+                                            onChange={handleVideoUpload}
                                             className="hidden"
                                         />
-                                        Choose File
+                                        Choose Videos
                                     </label>
                                 </div>
                             </div>
                         ) : (
                             <div className="space-y-6">
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                    <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-                                        <div className="text-blue-200 text-sm mb-1">Total Records</div>
-                                        <div className="text-3xl font-bold text-white">{data.length}</div>
+                                {/* Progress Bar */}
+                                <div className="bg-white/10 backdrop-blur-lg rounded-xl p-4 border border-white/20">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className="text-white font-medium">Progress: Video {currentIndex + 1} of {videos.length}</span>
+                                        <span className="text-purple-300">{Math.round(((currentIndex) / videos.length) * 100)}% Complete</span>
                                     </div>
-                                    <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-                                        <div className="text-blue-200 text-sm mb-1">Filtered Records</div>
-                                        <div className="text-3xl font-bold text-white">{filteredData.length}</div>
-                                    </div>
-                                    <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-                                        <div className="text-blue-200 text-sm mb-1">Columns</div>
-                                        <div className="text-3xl font-bold text-white">{columns.length}</div>
-                                    </div>
-                                    <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-                                        <button
-                                            onClick={() => {
-                                                setData([]);
-                                                setColumns([]);
-                                                setFilters({});
-                                                setSearchTerm('');
-                                            }}
-                                            className="w-full bg-red-500/20 hover:bg-red-500/30 text-red-200 px-4 py-2 rounded-lg transition-colors"
-                                        >
-                                            Reset Data
-                                        </button>
+                                    <div className="w-full bg-white/10 rounded-full h-3">
+                                        <div 
+                                            className="bg-gradient-to-r from-purple-500 to-pink-500 h-3 rounded-full transition-all duration-300"
+                                            style={{ width: `${((currentIndex) / videos.length) * 100}%` }}
+                                        />
                                     </div>
                                 </div>
 
-                                <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-blue-200 mb-2">Search</label>
-                                            <div className="relative">
-                                                <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                                                    <Search className="w-4 h-4" />
-                                                </div>
-                                                <input
-                                                    type="text"
-                                                    value={searchTerm}
-                                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                                    placeholder="Search all fields..."
-                                                    className="w-full pl-10 pr-3 py-2 bg-white/5 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <label className="block text-sm font-medium text-blue-200 mb-2">Group By</label>
-                                            <select
-                                                value={groupBy}
-                                                onChange={(e) => setGroupBy(e.target.value)}
-                                                className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                {/* Video Player */}
+                                <div className="bg-white/10 backdrop-blur-lg rounded-xl overflow-hidden border border-white/20">
+                                    <div className="bg-black aspect-video relative">
+                                        {currentVideo && (
+                                            <video
+                                                ref={videoRef}
+                                                className="w-full h-full"
+                                                onTimeUpdate={handleTimeUpdate}
+                                                onLoadedMetadata={handleLoadedMetadata}
+                                                onEnded={() => setIsPlaying(false)}
                                             >
-                                                {columns.map(col => (
-                                                    <option key={col} value={col}>{col}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-
-                                        <div>
-                                            <label className="block text-sm font-medium text-blue-200 mb-2">Aggregation</label>
-                                            <select
-                                                value={aggregation}
-                                                onChange={(e) => setAggregation(e.target.value)}
-                                                className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            >
-                                                <option value="count">Count</option>
-                                                <option value="sum">Sum</option>
-                                                <option value="avg">Average</option>
-                                                <option value="min">Minimum</option>
-                                                <option value="max">Maximum</option>
-                                            </select>
-                                        </div>
-
-                                        <div>
-                                            <label className="block text-sm font-medium text-blue-200 mb-2">Chart Type</label>
-                                            <select
-                                                value={chartType}
-                                                onChange={(e) => setChartType(e.target.value)}
-                                                className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            >
-                                                <option value="bar">Bar Chart</option>
-                                                <option value="line">Line Chart</option>
-                                                <option value="pie">Pie Chart</option>
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-4">
-                                        <button
-                                            onClick={downloadFilteredData}
-                                            className="bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-lg flex items-center gap-2 transition-colors"
-                                        >
-                                            <Download className="w-4 h-4" />
-                                            Download Filtered Data
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-                                    <h3 className="text-xl font-semibold text-white mb-4">Visualization</h3>
-                                    <ResponsiveContainer width="100%" height={400}>
-                                        {chartType === 'bar' ? (
-                                            <BarChart data={chartData}>
-                                                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" />
-                                                <XAxis dataKey="name" stroke="#93c5fd" />
-                                                <YAxis stroke="#93c5fd" />
-                                                <Tooltip 
-                                                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
-                                                    labelStyle={{ color: '#93c5fd' }}
-                                                />
-                                                <Legend />
-                                                <Bar dataKey="value" fill="#3b82f6" />
-                                            </BarChart>
-                                        ) : chartType === 'line' ? (
-                                            <LineChart data={chartData}>
-                                                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" />
-                                                <XAxis dataKey="name" stroke="#93c5fd" />
-                                                <YAxis stroke="#93c5fd" />
-                                                <Tooltip 
-                                                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
-                                                    labelStyle={{ color: '#93c5fd' }}
-                                                />
-                                                <Legend />
-                                                <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} />
-                                            </LineChart>
-                                        ) : (
-                                            <PieChart>
-                                                <Pie
-                                                    data={chartData}
-                                                    cx="50%"
-                                                    cy="50%"
-                                                    labelLine={false}
-                                                    label={(entry) => entry.name}
-                                                    outerRadius={150}
-                                                    fill="#8884d8"
-                                                    dataKey="value"
-                                                >
-                                                    {chartData.map((entry, index) => (
-                                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                                    ))}
-                                                </Pie>
-                                                <Tooltip 
-                                                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
-                                                    labelStyle={{ color: '#93c5fd' }}
-                                                />
-                                            </PieChart>
+                                                <source src={currentVideo.url} />
+                                            </video>
                                         )}
-                                    </ResponsiveContainer>
+                                    </div>
+
+                                    <div className="p-6 space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="text-xl font-semibold text-white">{currentVideo?.name}</h3>
+                                            <span className="text-purple-300">{formatTime(currentTime)} / {formatTime(duration)}</span>
+                                        </div>
+
+                                        {/* Timeline with markers */}
+                                        <div 
+                                            ref={timelineRef}
+                                            className="relative h-16 bg-white/5 rounded-lg cursor-pointer hover:bg-white/10 transition-colors"
+                                            onClick={handleTimelineClick}
+                                        >
+                                            {/* Progress bar */}
+                                            <div 
+                                                className="absolute top-0 left-0 h-full bg-purple-500/30 rounded-lg"
+                                                style={{ width: `${(currentTime / duration) * 100}%` }}
+                                            />
+                                            
+                                            {/* Current time indicator */}
+                                            <div 
+                                                className="absolute top-0 w-1 h-full bg-white shadow-lg"
+                                                style={{ left: `${(currentTime / duration) * 100}%` }}
+                                            />
+
+                                            {/* Markers */}
+                                            {markers.map((marker, idx) => (
+                                                <div
+                                                    key={idx}
+                                                    className="absolute top-0 h-full w-2 group cursor-pointer"
+                                                    style={{ left: `${(marker.time / duration) * 100}%` }}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        removeMarker(idx);
+                                                    }}
+                                                >
+                                                    <div className={`h-full ${marker.type === 'good' ? 'bg-green-500' : 'bg-red-500'} rounded-sm`} />
+                                                    <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
+                                                        {marker.label} - {marker.type === 'good' ? 'Good' : 'Bad'}
+                                                        <br />
+                                                        <span className="text-gray-400">Click to remove</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* Controls */}
+                                        <div className="flex flex-wrap gap-3">
+                                            <button
+                                                onClick={togglePlay}
+                                                className="bg-purple-500 hover:bg-purple-600 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
+                                            >
+                                                {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+                                                {isPlaying ? 'Pause' : 'Play'}
+                                            </button>
+
+                                            <button
+                                                onClick={() => addMarker('good')}
+                                                className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
+                                            >
+                                                <div className="w-5 h-5 bg-green-700 rounded" />
+                                                Mark Good
+                                            </button>
+
+                                            <button
+                                                onClick={() => addMarker('bad')}
+                                                className="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
+                                            >
+                                                <div className="w-5 h-5 bg-red-700 rounded" />
+                                                Mark Bad
+                                            </button>
+
+                                            <button
+                                                onClick={handleNext}
+                                                className="ml-auto bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 rounded-lg flex items-center gap-2 transition-colors font-semibold"
+                                            >
+                                                <Check className="w-5 h-5" />
+                                                {currentIndex < videos.length - 1 ? 'OK - Next Video' : 'Finish Review'}
+                                            </button>
+                                        </div>
+
+                                        {/* Current markers list */}
+                                        {markers.length > 0 && (
+                                            <div className="bg-white/5 rounded-lg p-4">
+                                                <h4 className="text-white font-medium mb-3">Markers on this video:</h4>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {markers.map((marker, idx) => (
+                                                        <span
+                                                            key={idx}
+                                                            className={`px-3 py-1 rounded-full text-sm font-medium ${
+                                                                marker.type === 'good' 
+                                                                    ? 'bg-green-500/20 text-green-300 border border-green-500/50' 
+                                                                    : 'bg-red-500/20 text-red-300 border border-red-500/50'
+                                                            }`}
+                                                        >
+                                                            {marker.label}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
 
-                                {stats && Object.keys(stats).length > 0 && (
+                                {/* Results Summary */}
+                                {results.length > 0 && (
                                     <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-                                        <h3 className="text-xl font-semibold text-white mb-4">Column Statistics</h3>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                            {Object.entries(stats).map(([col, stat]) => (
-                                                <div key={col} className="bg-white/5 rounded-lg p-4">
-                                                    <h4 className="font-semibold text-blue-200 mb-2">{col}</h4>
-                                                    <div className="space-y-1 text-sm text-gray-300">
-                                                        <div>Count: {stat.count}</div>
-                                                        <div>Sum: {stat.sum.toFixed(2)}</div>
-                                                        <div>Average: {stat.avg.toFixed(2)}</div>
-                                                        <div>Min: {stat.min.toFixed(2)}</div>
-                                                        <div>Max: {stat.max.toFixed(2)}</div>
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-xl font-semibold text-white">Review Results</h3>
+                                            <button
+                                                onClick={downloadResults}
+                                                className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                                            >
+                                                <Download className="w-4 h-4" />
+                                                Export Results
+                                            </button>
+                                        </div>
+                                        <div className="space-y-3">
+                                            {results.map((result, idx) => (
+                                                <div key={idx} className="bg-white/5 rounded-lg p-4">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-white font-medium">{result.videoName}</span>
+                                                        <div className="flex gap-4 text-sm">
+                                                            <span className="text-green-400">✓ {result.goodSegments} good</span>
+                                                            <span className="text-red-400">✗ {result.badSegments} bad</span>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ))}
@@ -396,31 +368,33 @@
                                     </div>
                                 )}
 
+                                {/* Video Queue */}
                                 <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-                                    <h3 className="text-xl font-semibold text-white mb-4">Data Preview (First 100 rows)</h3>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-sm text-left">
-                                            <thead className="text-xs uppercase bg-white/5">
-                                                <tr>
-                                                    {columns.map(col => (
-                                                        <th key={col} className="px-4 py-3 text-blue-200">
-                                                            {col}
-                                                        </th>
-                                                    ))}
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {filteredData.slice(0, 100).map((row, idx) => (
-                                                    <tr key={idx} className="border-b border-white/10 hover:bg-white/5">
-                                                        {columns.map(col => (
-                                                            <td key={col} className="px-4 py-3 text-gray-300">
-                                                                {String(row[col])}
-                                                            </td>
-                                                        ))}
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                    <h3 className="text-xl font-semibold text-white mb-4">Video Queue</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                        {videos.map((video, idx) => (
+                                            <div
+                                                key={idx}
+                                                className={`p-4 rounded-lg cursor-pointer transition-colors ${
+                                                    idx === currentIndex
+                                                        ? 'bg-purple-500/30 border-2 border-purple-400'
+                                                        : idx < currentIndex
+                                                        ? 'bg-green-500/20 border border-green-500/50'
+                                                        : 'bg-white/5 border border-white/20 hover:bg-white/10'
+                                                }`}
+                                                onClick={() => setCurrentIndex(idx)}
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-white text-sm truncate flex-1">{video.name}</span>
+                                                    {idx < currentIndex && (
+                                                        <Check className="w-5 h-5 text-green-400 flex-shrink-0 ml-2" />
+                                                    )}
+                                                    {idx === currentIndex && (
+                                                        <span className="text-purple-300 text-xs ml-2 flex-shrink-0">Current</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             </div>
@@ -430,7 +404,7 @@
             );
         }
 
-        ReactDOM.render(<DataAnalysisDashboard />, document.getElementById('root'));
+        ReactDOM.render(<VideoAnalysisDashboard />, document.getElementById('root'));
     </script>
 </body>
 </html>
